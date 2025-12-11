@@ -1,0 +1,316 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OwO test</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/marked@latest/marked.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/dompurify@latest/dist/purify.min.js"></script>
+  <style>
+    body {
+      background-color: #181818;
+      margin: 0;
+      color: #fff;
+      font-size: 14px;
+      line-height: 1.6;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    a {
+      color: #1890ff;
+      text-decoration: none;
+    }
+
+    a:hover {
+      color: #1890ff;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    nav {
+      background-color: #303030;
+      padding: 0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    .menu-link {
+      display: inline-block;
+      color: #fff;
+      text-decoration: none;
+      padding: 15px 20px;
+      font-size: 20pt;
+      transition: background-color 0.3s ease;
+    }
+
+    .menu-link:hover {
+      background-color: #555;
+    }
+
+    .menu-link:active {
+      background-color: #1890ff;
+      text-decoration: none;
+    }
+
+    .h-entry {
+      margin-left: 10%;
+      margin-right: 10%;
+      margin-bottom: 20px;
+      background-color: #303030;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .h-entry h1 {
+      text-align: center;
+      font-size: 24pt;
+    }
+
+    .h-entry h2 {
+      text-align: center;
+      font-size: 20pt;
+    }
+
+    .h-entry h3,
+    .h-entry h4,
+    .h-entry h5,
+    .h-entry h6 {
+      text-align: center;
+      font-size: 18pt;
+    }
+
+    .h-entry p {
+      font-size: 16pt;
+    }
+
+    .embed-container {
+      text-align: center;
+    }
+
+    img {
+      max-width: 100%;
+    }
+
+    @media (max-width: 768px) {
+      .menu-link {
+        font-size: 14pt;
+      }
+
+      .h-entry h1 {
+        font-size: 16pt;
+      }
+
+      .h-entry h2 {
+        font-size: 14pt;
+      }
+
+      .h-entry h3,
+      .h-entry h4,
+      .h-entry h5,
+      .h-entry h6 {
+        font-size: 12pt;
+      }
+
+      .h-entry p {
+        font-size: 10pt;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    document.addEventListener("DOMContentLoaded", async function () {
+      // https://pluribus.me
+      const origin = document.location.origin;
+
+      // /s/username/sitename/path/to/page.html --> /s/username/sitename
+      const basePath = document.location.pathname.split('/').slice(0, 4).join("/");
+
+      const pagesJson = await fetchPagesJson(origin, basePath);
+      await createMenubar(origin, basePath, pagesJson);
+      await fetchPageContent(origin, basePath, pagesJson);
+      decodeEmbeds();
+      centerImages();
+    });
+
+    function centerImages() {
+      const pList = document.getElementsByTagName("p");
+      for (let i = 0; i < pList.length; i++) {
+        let p = pList[i];
+        if (p.children.length == 1 && p.children[0].nodeName.toLowerCase() == "img") {
+          p.style.textAlign = "center";
+        }
+      }
+    }
+
+    function decodeEmbeds() {
+      const preList = document.getElementsByTagName("pre");
+      for (let i = 0; i < preList.length; i++) {
+        const pre = preList[i];
+        let embedHtml;
+        for (let j = 0; j < pre.children.length; j++) {
+          const preChild = pre.children[j];
+          if (preChild.classList.contains("language-embed")) {
+            embedHtml = preChild.innerText;
+            break;
+          }
+        };
+        if (embedHtml) {
+          console.log("Embed HTML" + embedHtml)
+          let newDiv = document.createElement("div");
+          newDiv.classList.add("embed-container");
+          const sanitizedHtml = DOMPurify.sanitize(embedHtml, {
+            // Allow iframes explicitly
+            ADD_TAGS: ['iframe'],
+
+            // Allow only safe, expected attributes
+            ADD_ATTR: [
+              'allow',
+              'allowfullscreen',
+              'frameborder',
+              'referrerpolicy',
+              'scrolling',
+              'src',
+              'width',
+              'height'
+            ],
+
+            // Keep built-in protections on
+            FORBID_TAGS: ['script', 'style'],      // script already forbidden by default, but explicit is fine
+            FORBID_ATTR: ['onerror', 'onload'],    // event handlers (DOMPurify strips these by default too)
+          });
+          console.log("Sanitized: " + sanitizedHtml)
+          newDiv.innerHTML = sanitizedHtml;
+          
+          let iframe = newDiv.children[0];
+          const w = iframe.width;
+          const h = iframe.height;
+          iframe.style.maxWidth = "100%";
+          iframe.style.aspectRatio = `${w / h}`;
+
+          pre.replaceWith(newDiv);
+        }
+      }
+    }
+
+    async function fetchPagesJson(origin, basePath) {
+      const pagesJsonLink = `${origin}${basePath}/pages.json`;
+
+      const content = await fetch(pagesJsonLink, {
+        method: "GET",
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-cache, must-revalidate",
+        },
+      });
+      let pagesJson;
+      if (content.ok) {
+        pagesJson = await content.json();
+      } else {
+        pagesJson = null;
+      }
+
+      return pagesJson;
+    }
+
+    async function createMenubar(origin, basePath, pagesJson) {
+      const menubar = document.createElement("nav");
+      menubar.style.width = "100%";
+
+      if (pagesJson) {
+        for (const page of pagesJson) {
+          const displayName = page.displayName;
+          const fileName = page.fileName;
+
+          let relPage;
+          if (fileName === "index") {
+            relPage = "";
+          } else {
+            relPage = `${fileName}.html`
+          }
+          const pageLink = document.createElement("a");
+          pageLink.classList.add("menu-link");
+          pageLink.href = `${origin}${basePath}/${relPage}`;
+          pageLink.textContent = displayName;
+          menubar.appendChild(pageLink);
+        }
+        document.body.appendChild(menubar);
+      }
+    }
+
+    async function fetchPageContent(origin, basePath, pagesJson) {
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+      });
+
+      // https://pluribus.me/s/username/sitename/path/to/page.html --> path/to/page
+      var pathName = window.location.pathname.split('/').slice(4).join("/").replace(".html", "");
+      if (!pathName) {
+        pathName = "index";
+      }
+
+      // Set tab title
+      if (pagesJson) {
+
+        // Convert site name to Title Case
+        let siteName = basePath.split('/')[3];
+        siteName = siteName.replace(/^-*(.)|-+(.)/g, (s, c, d) => c ? c.toUpperCase() : ' ' + d.toUpperCase())
+
+        // Get page displayName from pages.json
+        for (const page of pagesJson) {
+          const displayName = page.displayName;
+          const fileName = page.fileName;
+
+          let relPage;
+          if (fileName === pathName) {
+            document.head.getElementsByTagName("title")[0].innerText = `${siteName} • ${displayName}`;
+            break;
+          }
+        }
+      }
+
+      var panel = document.createElement("main");
+      const errorMessage = "Could not fetch page content<br><br>O_o";
+      try {
+        let fetchPathName = `${origin}${basePath}/${pathName}.md`;
+        const content = await fetch(fetchPathName, {
+          method: "GET",
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache, must-revalidate",
+          },
+        });
+        if (content.ok) {
+          const text = await content.text();
+          const parsedMarkdown = await marked.parse(text, breaks = true);
+          const sanitizedMarkdown = DOMPurify.sanitize(parsedMarkdown);
+
+          const markdownSections = sanitizedMarkdown.split('<hr>');
+          for (let i = 0; i < markdownSections.length; i++) {
+            const section = markdownSections[i].trim();
+            if (section) {
+              const sectionArticle = document.createElement('article');
+              sectionArticle.classList.add('h-entry');
+              sectionArticle.innerHTML = section;
+              panel.appendChild(sectionArticle);
+            }
+          }
+        } else {
+          throw new RuntimeException(errorMessage);
+        }
+      } catch (error) {
+        panel.innerHTML = errorMessage;
+      }
+
+      document.body.appendChild(panel);
+    }
+  </script>
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "961ff68dd5804b81b88ac6a4087df32e"}'></script><!-- Cloudflare Pages Analytics --></body>
+
+</html>
